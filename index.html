@@ -127,6 +127,15 @@ body.liteMode #liteHintBar{display:flex !important;}
 body.liteMode #weeklyCard,
 body.liteMode #beobWeeklyCard{display:none !important;}
 body.liteMode #notifBanner{display:none !important;}
+
+/* ===== 공지 첨부이미지 스와이프 갤러리 ===== */
+.ntGallery{position:relative;width:100%;}
+.ntGalleryTrack{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;border-radius:8px;background:#111;scrollbar-width:none;}
+.ntGalleryTrack::-webkit-scrollbar{display:none;}
+.ntGallerySlide{flex:0 0 100%;scroll-snap-align:center;position:relative;display:flex;align-items:center;justify-content:center;min-height:120px;}
+.ntGallerySlide img{max-width:100%;max-height:60vh;width:auto;height:auto;display:block;cursor:zoom-in;}
+.ntGalleryDown{position:absolute;bottom:8px;right:8px;background:rgba(20,22,34,.65);color:#fff;padding:6px 10px;border-radius:6px;font-size:11px;text-decoration:none;font-weight:700;z-index:2;}
+.ntGalleryCount{text-align:center;font-size:11px;color:var(--sub);margin-top:4px;font-weight:700;}
 body.liteMode #versionInput{display:none !important;}
 body.liteMode #modeHint{display:none !important;}
 body.liteMode .stat-row{grid-template-columns:1fr 1fr 1fr;gap:6px;}
@@ -140,16 +149,17 @@ body.liteMode .tab{padding:7px 4px;border-radius:10px;}
 </head>
 <body>
 
-<div id="loginOverlay" style="display:none;position:fixed;inset:0;background:rgba(20,22,34,.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:20px;">
+<div id="loginOverlay" style="display:flex;position:fixed;inset:0;background:rgba(20,22,34,.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:20px;">
 <div style="background:#fff;border-radius:18px;padding:28px 22px;width:100%;max-width:340px;box-shadow:0 20px 50px rgba(0,0,0,.25);">
 <div style="text-align:center;margin-bottom:6px;font-size:26px;">🗂️</div>
 <div style="text-align:center;font-size:18px;font-weight:800;color:#2E2140;margin-bottom:4px;">통합 스터디 미션</div>
 <div style="text-align:center;font-size:12px;color:#9AA3B8;margin-bottom:20px;">이름을 선택하고 입장하세요</div>
-<select id="loginSelect" style="font-size:15px;padding:12px;width:100%;border:1px solid #E4E7EE;border-radius:10px;background:#fff;color:#2E2140;-webkit-appearance:none;margin-bottom:10px;text-align:center;text-align-last:center;font-weight:700;"></select>
+<select id="loginSelect" style="font-size:15px;padding:12px;width:100%;border:1px solid #E4E7EE;border-radius:10px;background:#fff;color:#2E2140;-webkit-appearance:none;margin-bottom:10px;text-align:center;text-align-last:center;font-weight:700;"><option>불러오는 중...</option></select>
 <input id="loginPin" type="password" inputmode="numeric" placeholder="비번 입력" style="display:none;font-size:15px;padding:12px;width:100%;border:1px solid #E4E7EE;border-radius:10px;background:#fff;color:#2E2140;margin-bottom:10px;text-align:center;box-sizing:border-box;">
 <div id="loginPinErr" style="display:none;text-align:center;font-size:11px;color:#D9534F;margin-bottom:8px;">비번이 틀렸습니다</div>
 <button id="loginBtn" style="width:100%;padding:14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#5C7CF0,#7A4FD6);color:#fff;border:none;border-radius:10px;cursor:pointer;-webkit-appearance:none;box-shadow:0 4px 14px rgba(100,90,220,.35);">입장</button>
 <div id="loginHint" style="text-align:center;font-size:11px;color:#B8BECC;margin-top:12px;"></div>
+<div id="pinNudge" onclick="openPinSetting()" style="display:none;margin-top:10px;background:#FFF6E0;border:1px solid #F0D68A;border-radius:10px;padding:9px 10px;font-size:11px;color:#8E6B1E;font-weight:700;text-align:center;cursor:pointer;line-height:1.5;">🔓 아직 비번이 설정되지 않았어요!<br>탭해서 안전하게 설정해두세요 →</div>
 <div style="text-align:center;margin-top:10px;">
 <span id="pinSettingLink" onclick="openPinSetting()" style="font-size:10px;color:#D8DAE2;cursor:pointer;">🔒 비번 설정</span>
 </div>
@@ -1494,7 +1504,7 @@ function updateModeHint(){
 // ===== 로그인 =====
 const ADMIN_NAME = '송현';
 
-window.announcementImage = null; // 클립보드 붙여넣은 이미지 임시 저장
+window.announcementImages = []; // 클립보드/파일선택으로 붙인 이미지 여러 장 임시 저장 (v54)
 // PIN SHA-256 해시 저장/비교 (기존 평문 PIN은 로그인·설정 시 자동 마이그레이션)
 function isPinHash(v){
   return typeof v === 'string' && /^[0-9a-f]{64}$/i.test(v);
@@ -1539,6 +1549,18 @@ function updateLoginHint(){
   pinInput.style.display = 'none';
   pinInput.value = '';
   document.getElementById('loginPinErr').style.display = 'none';
+  checkPinNudge(name);
+}
+// 선택한 사람에게 비번(PIN)이 아직 설정 안 되어 있으면 설정을 유도하는 안내문구를 보여줌
+let pinNudgeToken = 0;
+async function checkPinNudge(name){
+  const nudge = document.getElementById('pinNudge');
+  if(!nudge) return;
+  nudge.style.display = 'none';
+  const myToken = ++pinNudgeToken;
+  const pin = await fetchPin(name);
+  if(myToken !== pinNudgeToken) return; // 그 사이 이름이 바뀌었으면 이전 결과는 무시
+  nudge.style.display = pin ? 'none' : 'block';
 }
 function fetchPin(name){
   return new Promise((resolve)=>{
@@ -1580,10 +1602,54 @@ function logout(){
 
 // ===== 공지 함수 (v37: 도면/적산 모드별 분리 + 첨부PDF + 펼쳐보기) =====
 const NOTICE_LABEL = { draw:'도면', jeoksan:'적산' };
+// 예전 단일 pdf/pdfName 필드와 신규 다중 pdfs([{data,name}]) 배열을 모두 [{data,name}] 형태로 통일해서 반환
+function normalizeNoticePdfs(d){
+  if(!d) return [];
+  if(Array.isArray(d.pdfs)) return d.pdfs.filter(p=> p && p.data);
+  if(d.pdf) return [{ data: d.pdf, name: d.pdfName || '첨부파일' }];
+  return [];
+}
 let announcementDataByMode = {}; // {draw:{...}, jeoksan:{...}}
 let noticeModeCurrent = null; // 현재 배너에 표시중인 모드
 
 function noticePath(m){ return 'meta/announcement_' + m; }
+function noticeHistoryPath(m){ return 'meta/noticeHistory_' + m; }
+const NOTICE_HISTORY_LIMIT = 30;
+
+// 기존(교체되기 전) 공지를 히스토리 배열 맨 앞에 추가 저장(최대 NOTICE_HISTORY_LIMIT개, 넘치면 오래된 것부터 스토리지도 함께 정리)
+async function archiveCurrentNotice(m, oldData){
+  if(!db || !oldData || !oldData.title) return;
+  try{
+    const snap = await db.ref(noticeHistoryPath(m)).once('value');
+    let list = Array.isArray(snap.val()) ? snap.val() : [];
+    list.unshift({
+      title: oldData.title || '',
+      content: oldData.content || '',
+      images: Array.isArray(oldData.images) ? oldData.images.filter(Boolean) : (oldData.image ? [oldData.image] : []),
+      pdfs: normalizeNoticePdfs(oldData),
+      direction: oldData.direction || 'left',
+      savedAt: Date.now()
+    });
+    // 넘치는 만큼 잘라내고, 잘려나간 항목의 첨부는 Storage에서도 정리
+    if(list.length > NOTICE_HISTORY_LIMIT){
+      const removed = list.slice(NOTICE_HISTORY_LIMIT);
+      removed.forEach(item=>{
+        (item.images||[]).forEach(deleteStorageUrlSafe);
+        normalizeNoticePdfs(item).forEach(p=> deleteStorageUrlSafe(p.data));
+      });
+      list = list.slice(0, NOTICE_HISTORY_LIMIT);
+    }
+    await db.ref(noticeHistoryPath(m)).set(list);
+  }catch(e){ console.error('공지 히스토리 저장 실패:', e); }
+}
+
+async function loadNoticeHistory(m){
+  if(!db) return [];
+  try{
+    const snap = await db.ref(noticeHistoryPath(m)).once('value');
+    return Array.isArray(snap.val()) ? snap.val() : [];
+  }catch(e){ return []; }
+}
 
 async function loadAnnouncement(m){
   if(!m || !NOTICE_LABEL[m]){
@@ -1598,13 +1664,15 @@ async function loadAnnouncement(m){
     const snap = await db.ref(noticePath(m)).once('value');
     const data = snap.val();
     if(data && data.title){
+      // v54: 이미지 여러 장(images 배열). 예전 데이터(image 단일 문자열)도 그대로 호환 표시
+      let images = Array.isArray(data.images) ? data.images.filter(Boolean) : [];
+      if(!images.length && data.image) images = [data.image];
       announcementDataByMode[m] = {
         title: data.title,
         mode: 'custom',
         content: data.content || '',
-        image: data.image || null,
-        pdf: data.pdf || null,
-        pdfName: data.pdfName || null,
+        images: images,
+        pdfs: normalizeNoticePdfs(data),
         direction: data.direction || 'left'
       };
     }else{
@@ -1625,6 +1693,44 @@ function displayAnnouncement(m){
   container.innerHTML = t ? `<div>${escapeHtml(t)}</div>` : '';
 }
 
+// ===== 공지 첨부이미지: 스와이프로 넘겨보는 갤러리 + 다운로드 버튼 =====
+let ntGalleryCounter = 0;
+function buildNoticeGalleryHtml(images, downloadPrefix){
+  if(!images || !images.length) return '';
+  const gid = 'ntg' + (++ntGalleryCounter);
+  const slides = images.map((src, idx)=> `
+    <div class="ntGallerySlide">
+      <img src="${src}" data-idx="${idx}" class="ntGalleryZoom" alt="공지 이미지 ${idx+1}">
+      <a class="ntGalleryDown" href="${src}" download="${escAttrSafe(downloadPrefix)}_${idx+1}.png" target="_blank">⬇ 다운로드</a>
+    </div>`).join('');
+  const html = `<div class="ntGallery">
+    <div class="ntGalleryTrack" id="${gid}">${slides}</div>
+    ${images.length>1 ? `<div class="ntGalleryCount" id="${gid}_cnt">1 / ${images.length}</div>` : ''}
+  </div>`;
+  // DOM에 삽입된 뒤 스크롤 위치로 현재 몇 번째 사진인지 갱신 + 탭하면 원본 새창으로 보기
+  setTimeout(()=>{
+    const track = document.getElementById(gid);
+    if(!track) return;
+    const cnt = document.getElementById(gid + '_cnt');
+    if(cnt){
+      track.addEventListener('scroll', ()=>{
+        const idx = Math.round(track.scrollLeft / track.clientWidth);
+        cnt.textContent = (idx+1) + ' / ' + images.length;
+      });
+    }
+    track.querySelectorAll('.ntGalleryZoom').forEach(imgEl=>{
+      imgEl.onclick = ()=>{
+        const src = images[Number(imgEl.dataset.idx)||0];
+        const w = window.open('');
+        if(!w){ window.open(src, '_blank'); return; }
+        w.document.write('<title>공지 이미지</title><body style="margin:0;background:#111;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;"><img src="'+src+'" style="max-width:100%;height:auto;"></body>');
+      };
+    });
+  }, 0);
+  return html;
+}
+function escAttrSafe(s){ return (s||'notice').replace(/[^a-zA-Z0-9가-힣_-]/g,'_'); }
+
 function toggleAnnouncementExpand(){
   const area = document.getElementById('notifExpandArea');
   if(!area) return;
@@ -1634,48 +1740,37 @@ function toggleAnnouncementExpand(){
   if(!d){ area.style.display = 'none'; return; }
   let html = `<div style="font-weight:800;font-size:13px;color:#2E2140;">${escapeHtml(d.title||'')}</div>`;
   if(d.content) html += `<div style="font-size:12px;color:#4A4F5C;white-space:pre-wrap;line-height:1.5;">${escapeHtml(d.content)}</div>`;
-  if(d.image) html += `<img id="noticeImgDisplay" src="${d.image}" alt="공지 이미지" style="max-width:100%;width:auto;height:auto;border-radius:8px;cursor:zoom-in;image-rendering:-webkit-optimize-contrast;" title="클릭하면 원본 크기로 보기">`;
-  if(d.pdf) html += `<button onclick="openNoticePdf('${m}')" style="align-self:flex-start;padding:7px 12px;background:#4A6FE3;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">📎 ${escapeHtml(d.pdfName||'첨부파일')} 보기</button>`;
-  if(!d.content && !d.image && !d.pdf) html += `<div style="font-size:11px;color:#B8BECC;">추가 내용 없음</div>`;
+  const imgs = Array.isArray(d.images) ? d.images.filter(Boolean) : [];
+  html += buildNoticeGalleryHtml(imgs, NOTICE_LABEL[m] + '_공지이미지');
+  const pdfs = Array.isArray(d.pdfs) ? d.pdfs : normalizeNoticePdfs(d);
+  pdfs.forEach((p, idx)=>{
+    html += `<button onclick="openNoticePdf('${m}', ${idx})" style="align-self:flex-start;padding:7px 12px;background:#4A6FE3;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">📎 ${escapeHtml(p.name||'첨부파일')} 보기</button>`;
+  });
+  if(!d.content && !imgs.length && !pdfs.length) html += `<div style="font-size:11px;color:#B8BECC;">추가 내용 없음</div>`;
+  html += `<button onclick="openNoticeHistoryViewer('${m}')" style="align-self:flex-start;margin-top:2px;padding:6px 11px;background:none;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--sub);font-weight:700;cursor:pointer;">📜 이전 공지 보기</button>`;
   area.innerHTML = html;
   area.style.display = 'flex';
-  // 원본보다 크게 확대되지 않게 + 탭하면 원본 새창
-  const imgEl = document.getElementById('noticeImgDisplay');
-  if(imgEl){
-    imgEl.onload = ()=>{
-      if(imgEl.naturalWidth && imgEl.parentElement){
-        const parentW = imgEl.parentElement.clientWidth || 0;
-        // 레티나 화면에서 CSS로 불필요하게 키우지 않음(업스케일 블러 방지)
-        const capped = Math.min(imgEl.naturalWidth, parentW);
-        imgEl.style.maxWidth = capped + 'px';
-        imgEl.style.width = 'auto';
-        imgEl.style.height = 'auto';
-      }
-    };
-    imgEl.onclick = ()=>{
-      const w = window.open('');
-      if(!w){ window.open(d.image, '_blank'); return; }
-      w.document.write('<title>공지 이미지</title><body style="margin:0;background:#111;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;"><img src="'+d.image+'" style="max-width:100%;height:auto;"></body>');
-    };
-  }
 }
 
-function openNoticePdf(m){
+function openNoticePdf(m, idx){
+  idx = idx || 0;
   const d = announcementDataByMode[m];
-  if(!d || !d.pdf) return;
+  const pdfs = d ? (Array.isArray(d.pdfs) ? d.pdfs : normalizeNoticePdfs(d)) : [];
+  const p = pdfs[idx];
+  if(!p || !p.data) return;
   const w = window.open('');
   if(!w){
     // 팝업 차단 시 바로 저장
-    const a = document.createElement('a'); a.href = d.pdf; a.download = d.pdfName||'첨부.pdf'; a.click();
+    const a = document.createElement('a'); a.href = p.data; a.download = p.name||'첨부.pdf'; a.click();
     return;
   }
-  w.document.write(`<title>${d.pdfName||'첨부파일'}</title>
+  w.document.write(`<title>${p.name||'첨부파일'}</title>
     <body style="margin:0;">
     <div style="padding:8px;background:#2E2140;display:flex;justify-content:space-between;align-items:center;">
-      <span style="color:#fff;font-size:13px;">${d.pdfName||'첨부파일'}</span>
-      <a href="${d.pdf}" download="${d.pdfName||'첨부.pdf'}" style="background:#4A6FE3;color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;text-decoration:none;">⬇ 저장</a>
+      <span style="color:#fff;font-size:13px;">${p.name||'첨부파일'}</span>
+      <a href="${p.data}" download="${p.name||'첨부.pdf'}" style="background:#4A6FE3;color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;text-decoration:none;">⬇ 저장</a>
     </div>
-    <iframe src="${d.pdf}" style="width:100%;height:calc(100vh - 44px);border:none;"></iframe>
+    <iframe src="${p.data}" style="width:100%;height:calc(100vh - 44px);border:none;"></iframe>
     </body>`);
 }
 
@@ -1698,7 +1793,11 @@ function openAnnouncementMgmt(m){
       </button>
       <button onclick="switchToAutoAnnouncement('${m}')" style="padding:12px;background:#2FBF71;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;text-align:left;">
         <div style="font-size:14px;margin-bottom:4px;">🗑 공지 지우기</div>
-        <div style="font-size:11px;opacity:.9;">배너 공지를 삭제합니다</div>
+        <div style="font-size:11px;opacity:.9;">배너 공지를 삭제합니다(지난 공지로 보관됨)</div>
+      </button>
+      <button onclick="openNoticeHistoryAdmin('${m}')" style="padding:12px;background:#4A4F5C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;text-align:left;">
+        <div style="font-size:14px;margin-bottom:4px;">🗂 지난 공지 관리</div>
+        <div style="font-size:11px;opacity:.9;">과거 공지 목록 열람 · 개별 삭제</div>
       </button>
     </div>
   </div>`;
@@ -1755,18 +1854,21 @@ function showCustomAnnouncementEdit(m, isEdit){
           </select>
         </div>
         <div>
-          <label style="font-size:11px;font-weight:700;color:#8A93A8;display:block;margin-bottom:4px;">📎 PDF 첨부 (선택)</label>
-          <input id="annPdfInput" type="file" accept="application/pdf" style="width:100%;font-size:11px;">
-          <div id="annPdfStatus" style="font-size:10px;color:#8A93A8;margin-top:4px;">${d.pdf? '현재 첨부: '+escapeHtml(d.pdfName||'파일') : '첨부 없음'}</div>
-          ${d.pdf? '<button onclick="removeNoticePdf()" style="margin-top:4px;padding:4px 8px;background:#FDEBEE;color:#C0392B;border:none;border-radius:5px;font-size:10px;cursor:pointer;">🗑 첨부 삭제</button>' : ''}
+          <label style="font-size:11px;font-weight:700;color:#8A93A8;display:block;margin-bottom:4px;">📎 PDF 첨부 (선택, 여러 개 가능 — 예: 요일별 시험지)</label>
+          <input id="annPdfInput" type="file" accept="application/pdf" multiple style="width:100%;font-size:11px;">
+          <div id="annPdfList" style="display:flex;flex-direction:column;gap:4px;margin-top:6px;"></div>
         </div>
       </div>
       <div style="flex:1;min-width:220px;background:#F7F9FC;border:1px solid #E4E7EE;border-radius:8px;padding:12px;overflow-y:auto;display:flex;flex-direction:column;">
-        <div style="font-size:11px;font-weight:700;color:#8A93A8;margin-bottom:8px;">📸 미리보기</div>
-        <div id="annPreviewArea" style="flex:1;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;text-align:center;color:#B8BECC;font-size:11px;">
-          ${d.image ? `<img src="${d.image}" style="max-width:100%;max-height:280px;width:auto;height:auto;border-radius:6px;image-rendering:-webkit-optimize-contrast;">` : '<div>Ctrl+V 또는 Cmd+V로<br>이미지를 붙여넣으세요<br><span style="font-size:10px;color:#C7D1E8;">원본 해상도 그대로 저장됩니다</span></div>'}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div style="font-size:11px;font-weight:700;color:#8A93A8;">📸 미리보기 (여러 장 가능)</div>
+          <label style="font-size:10px;color:#4A6FE3;font-weight:700;cursor:pointer;background:#EAF0FF;padding:4px 8px;border-radius:5px;">
+            📁 여러 장 선택
+            <input id="annImageFileInput" type="file" accept="image/*" multiple style="display:none;">
+          </label>
         </div>
-        ${d.image ? '<button onclick="removeNoticeImage()" style="margin-top:6px;padding:4px 8px;background:#FDEBEE;color:#C0392B;border:none;border-radius:5px;font-size:10px;cursor:pointer;">🗑 이미지 삭제</button>' : ''}
+        <div id="annPreviewArea" style="flex:1;display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;align-items:flex-start;justify-content:flex-start;text-align:center;color:#B8BECC;font-size:11px;min-height:120px;" tabindex="0">
+        </div>
       </div>
     </div>
     <div style="display:flex;gap:6px;margin-top:12px;">
@@ -1778,13 +1880,49 @@ function showCustomAnnouncementEdit(m, isEdit){
   const overlay = document.getElementById('announcementOverlay');
   overlay.innerHTML = editHtml;
 
-  window.announcementImage = isEdit ? (d.image||null) : null;
-  window.announcementPdf = isEdit ? (d.pdf||null) : null;
-  window.announcementPdfName = isEdit ? (d.pdfName||null) : null;
+  window.announcementImages = isEdit ? (Array.isArray(d.images) ? d.images.slice() : (d.image? [d.image]: [])) : [];
+  window.announcementPdfs = isEdit ? normalizeNoticePdfs(d).map(p=>({data:p.data, name:p.name})) : [];
+  const MAX_IMAGES = 10;
+  const MAX_PDFS = 7; // 요일별 시험지 등 최대 일주일치
+
+  function renderNoticePdfList(){
+    const wrap = document.getElementById('annPdfList');
+    if(!wrap) return;
+    if(!window.announcementPdfs.length){
+      wrap.innerHTML = '<div style="font-size:10px;color:#8A93A8;">첨부 없음</div>';
+      return;
+    }
+    wrap.innerHTML = window.announcementPdfs.map((p, idx)=>
+      `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;background:#F7F9FC;border:1px solid #E4E7EE;border-radius:6px;padding:5px 8px;">
+        <span style="font-size:10.5px;color:#2E2140;word-break:break-all;">📄 ${escapeHtml(p.name||'파일')}</span>
+        <button onclick="removeNoticePdf(${idx})" style="flex-shrink:0;padding:3px 7px;background:#FDEBEE;color:#C0392B;border:none;border-radius:5px;font-size:10px;cursor:pointer;">✕</button>
+      </div>`
+    ).join('') + (window.announcementPdfs.length < MAX_PDFS ? `<div style="font-size:9.5px;color:#B8BECC;">${window.announcementPdfs.length}/${MAX_PDFS}개 · 계속 선택 가능</div>` : `<div style="font-size:9.5px;color:#C0392B;">최대 ${MAX_PDFS}개까지 첨부 가능</div>`);
+  }
+  window.renderNoticePdfList = renderNoticePdfList;
+  renderNoticePdfList();
+
+  function renderNoticePreview(){
+    const preview = document.getElementById('annPreviewArea');
+    if(!preview) return;
+    if(!window.announcementImages.length){
+      preview.innerHTML = '<div style="width:100%;padding:20px 0;">Ctrl+V 또는 Cmd+V로<br>이미지를 붙여넣거나<br>"여러 장 선택"을 눌러주세요<br><span style="font-size:10px;color:#C7D1E8;">원본 해상도 그대로, 최대 '+MAX_IMAGES+'장</span></div>';
+      return;
+    }
+    preview.innerHTML = window.announcementImages.map((src, idx)=>
+      `<div style="position:relative;width:110px;">
+        <img src="${src}" style="width:110px;height:110px;object-fit:cover;border-radius:6px;image-rendering:-webkit-optimize-contrast;">
+        <button onclick="removeNoticeImage(${idx})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;background:#C0392B;color:#fff;border:none;border-radius:50%;font-size:11px;cursor:pointer;line-height:20px;padding:0;">✕</button>
+      </div>`
+    ).join('') + (window.announcementImages.length < MAX_IMAGES ? `<div style="font-size:10px;color:#B8BECC;width:100%;text-align:left;">${window.announcementImages.length}/${MAX_IMAGES}장 · 계속 붙여넣거나 선택 가능</div>` : `<div style="font-size:10px;color:#C0392B;width:100%;text-align:left;">최대 ${MAX_IMAGES}장까지 첨부 가능</div>`);
+  }
+  window.renderNoticePreview = renderNoticePreview;
+  renderNoticePreview();
 
   // 클립보드 이미지를 원본 해상도 PNG로 정규화(재압축·축소 없음)
   async function ingestNoticeImageFile(file){
     if(!file) return;
+    if(window.announcementImages.length >= MAX_IMAGES){ alert(`이미지는 최대 ${MAX_IMAGES}장까지 첨부할 수 있어요.`); return; }
     try{
       const bmp = await createImageBitmap(file);
       const canvas = document.createElement('canvas');
@@ -1796,76 +1934,95 @@ function showCustomAnnouncementEdit(m, isEdit){
       ctx.drawImage(bmp, 0, 0);
       bmp.close && bmp.close();
       const dataUrl = canvas.toDataURL('image/png');
-      window.announcementImage = dataUrl;
-      const preview = document.getElementById('annPreviewArea');
-      if(preview){
-        preview.innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:280px;width:auto;height:auto;border-radius:6px;image-rendering:-webkit-optimize-contrast;">`
-          + `<div style="font-size:10px;color:#8A93A8;margin-top:6px;">원본 ${canvas.width}×${canvas.height}px · PNG 저장</div>`;
-      }
+      window.announcementImages.push(dataUrl);
+      renderNoticePreview();
     }catch(err){
       // createImageBitmap 실패 시 FileReader 폴백(그래도 재인코딩 최소화)
       const reader = new FileReader();
       reader.onload = (evt)=>{
-        window.announcementImage = evt.target.result;
-        const preview = document.getElementById('annPreviewArea');
-        if(preview) preview.innerHTML = `<img src="${evt.target.result}" style="max-width:100%;max-height:280px;width:auto;height:auto;border-radius:6px;image-rendering:-webkit-optimize-contrast;">`;
+        window.announcementImages.push(evt.target.result);
+        renderNoticePreview();
       };
       reader.readAsDataURL(file);
     }
   }
   function onNoticePaste(e){
     const items = (e.clipboardData && e.clipboardData.items) || [];
+    let handled = false;
     for(let i=0;i<items.length;i++){
       if(items[i].type && items[i].type.indexOf('image') !== -1){
         e.preventDefault();
         ingestNoticeImageFile(items[i].getAsFile());
-        return;
+        handled = true;
       }
     }
+    return handled;
   }
-  const annContentEl = document.getElementById('annContent');
-  if(annContentEl) annContentEl.addEventListener('paste', onNoticePaste);
   const previewWrap = document.getElementById('annPreviewArea');
   if(previewWrap){
-    previewWrap.setAttribute('tabindex','0');
-    previewWrap.addEventListener('paste', onNoticePaste);
     // 미리보기 칸을 클릭해 둔 뒤 Ctrl+V 하기 쉽도록
     previewWrap.addEventListener('click', ()=> previewWrap.focus());
   }
+  // 문서 전체에서 붙여넣기 감지(포커스가 본문/미리보기 어디에 있어도 캡처 이미지 붙여넣기 동작).
+  // annContent(본문)에 포커스가 있을 때도 이미지면 가로채고, 텍스트면 preventDefault 안 하므로 평소처럼 붙여넣기됨.
+  document.addEventListener('paste', function docPasteHandler(e){
+    if(!document.getElementById('annPreviewArea')){
+      document.removeEventListener('paste', docPasteHandler);
+      return;
+    }
+    onNoticePaste(e);
+  });
+  const imgFileInput = document.getElementById('annImageFileInput');
+  if(imgFileInput){
+    imgFileInput.addEventListener('change', (e)=>{
+      const files = Array.from(e.target.files || []);
+      files.forEach(f=> ingestNoticeImageFile(f));
+      imgFileInput.value = '';
+    });
+  }
 
   document.getElementById('annPdfInput').addEventListener('change', (e)=>{
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt)=>{
-      window.announcementPdf = evt.target.result;
-      window.announcementPdfName = file.name;
-      document.getElementById('annPdfStatus').textContent = '첨부됨: ' + file.name;
-    };
-    reader.readAsDataURL(file);
+    const files = Array.from(e.target.files || []);
+    files.forEach(file=>{
+      if(window.announcementPdfs.length >= MAX_PDFS){ alert(`PDF는 최대 ${MAX_PDFS}개까지 첨부할 수 있어요.`); return; }
+      const reader = new FileReader();
+      reader.onload = (evt)=>{
+        window.announcementPdfs.push({ data: evt.target.result, name: file.name });
+        renderNoticePdfList();
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
   });
 }
 
-function removeNoticeImage(){
-  deleteStorageUrlSafe(window.announcementImage);
-  window.announcementImage = null;
-  const p = document.getElementById('annPreviewArea');
-  if(p) p.innerHTML = '<div>Ctrl+V 또는 Cmd+V로<br>이미지를 붙여넣으세요</div>';
+function removeNoticeImage(idx){
+  const url = window.announcementImages[idx];
+  deleteStorageUrlSafe(url);
+  window.announcementImages.splice(idx, 1);
+  if(window.renderNoticePreview) window.renderNoticePreview();
 }
 
-function removeNoticePdf(){
-  deleteStorageUrlSafe(window.announcementPdf);
-  window.announcementPdf = null;
-  window.announcementPdfName = null;
-  const s = document.getElementById('annPdfStatus');
-  if(s) s.textContent = '첨부 없음';
+function removeNoticePdf(idx){
+  const p = window.announcementPdfs[idx];
+  if(p) deleteStorageUrlSafe(p.data);
+  window.announcementPdfs.splice(idx, 1);
+  if(window.renderNoticePdfList) window.renderNoticePdfList();
 }
 
 // data: URL을 Storage에 업로드하고 다운로드 URL을 반환. 실패/타임아웃 시 null(호출부에서 base64로 폴백)
 // Storage Rules 미설정·네트워크 지연 시 put()이 끝나지 않아 "저장 중..."에 멈추던 문제 방지용 타임아웃 포함
+// v54: 한 번 실패하면 이번 세션에서는 재시도로 시간 낭비하지 않도록 결과를 캐싱(storageProbeState)
+// Storage가 활성화되지 않은 프로젝트(Spark 무료 플랜)이므로, 업로드 시도 자체를 하지 않고
+// 곧바로 base64(RTDB) 방식으로 저장합니다. 이렇게 하면 매 저장마다 발생하던 타임아웃 대기(수초)가 사라집니다.
+// 나중에 Blaze로 업그레이드해 Storage를 켜면 이 값을 true로 바꾸기만 하면 다시 Storage 업로드를 씁니다.
+const STORAGE_ENABLED = false;
+let storageProbeState = null; // null=미확인, true=정상, false=실패(Rules 미발행 등)
 async function uploadDataUrlToStorage(dataUrl, path){
+  if(!STORAGE_ENABLED) return null;
   if(!storage || !dataUrl || !dataUrl.startsWith('data:')) return null;
-  const TIMEOUT_MS = 12000;
+  if(storageProbeState === false) return null;
+  const TIMEOUT_MS = 5000;
   try{
     const blob = await (await fetch(dataUrl)).blob();
     const ref = storage.ref(path);
@@ -1873,8 +2030,10 @@ async function uploadDataUrlToStorage(dataUrl, path){
     const timeoutPromise = new Promise((_, reject)=>{
       setTimeout(()=> reject(new Error('Storage 업로드 타임아웃')), TIMEOUT_MS);
     });
-    return await Promise.race([putPromise, timeoutPromise]);
-  }catch(e){ console.warn('Storage 업로드 실패, base64로 저장:', e); return null; }
+    const url = await Promise.race([putPromise, timeoutPromise]);
+    storageProbeState = true;
+    return url;
+  }catch(e){ console.warn('Storage 업로드 실패, base64로 저장:', e); storageProbeState = false; return null; }
 }
 async function maybeCompressImageDataUrl(dataUrl, maxChars){
   maxChars = maxChars || 700000;
@@ -1907,40 +2066,58 @@ async function saveAnnouncement(m){
   const direction = document.getElementById('annDirection').value || 'left';
   const content = document.getElementById('annContent').value || '';
   const saveBtn = document.querySelector('#announcementOverlay button[onclick^="saveAnnouncement"]');
-  if(saveBtn){ saveBtn.disabled = true; saveBtn.textContent = '⏳ 저장 중...'; }
+  const setBtnText = (t)=>{ if(saveBtn) saveBtn.textContent = t; };
+  if(saveBtn){ saveBtn.disabled = true; setBtnText('⏳ 저장 중...'); }
 
   try{
     const ts = Date.now();
-    let imageOut = window.announcementImage || null;
-    let pdfOut = window.announcementPdf || null;
+    const images = (window.announcementImages || []).slice();
+    const pdfsIn = (window.announcementPdfs || []).slice();
+    const pdfNeedsUploadCount = pdfsIn.filter(p=> p.data && p.data.startsWith('data:')).length;
+    const totalCount = images.length + pdfNeedsUploadCount;
+    let doneCount = 0;
+    function tick(){ doneCount++; if(totalCount>1) setBtnText(`⏳ 업로드 중... (${doneCount}/${totalCount})`); }
 
-    // 1) Storage 업로드 시도(타임아웃 있음). 실패해도 진행
-    if(imageOut && imageOut.startsWith('data:')){
-      const url = await uploadDataUrlToStorage(imageOut, `notices/${m}/${ts}_image.png`);
-      if(url) imageOut = url;
-      else imageOut = await maybeCompressImageDataUrl(imageOut); // RTDB 폴백 전 용량 축소
-    }
-    if(pdfOut && pdfOut.startsWith('data:')){
-      const url = await uploadDataUrlToStorage(pdfOut, `notices/${m}/${ts}_${window.announcementPdfName||'file.pdf'}`);
-      if(url) pdfOut = url;
-    }
+    // 이미지 여러 장을 동시(병렬)에 Storage 업로드 시도 — v54: 다중 이미지 지원
+    // Storage 업로드 실패분만 base64로 폴백(압축 시도 후 저장)
+    const imageResults = await Promise.all(images.map(async (img, idx)=>{
+      if(!img || !img.startsWith('data:')){ tick(); return img; }
+      const url = await uploadDataUrlToStorage(img, `notices/${m}/${ts}_image_${idx}.png`);
+      let out = url;
+      if(!out) out = await maybeCompressImageDataUrl(img, 1500000);
+      tick();
+      return out;
+    }));
 
-    // base64가 여전히 과도하면 저장 중단(RTDB 한도/멈춤 방지)
-    if(typeof imageOut === 'string' && imageOut.startsWith('data:') && imageOut.length > 900000){
-      throw new Error('이미지 용량이 너무 큽니다. 다시 캡처하거나 작은 영역만 붙여넣어 주세요.');
+    // PDF도 여러 개를 동시(병렬)로 Storage 업로드 시도, 실패분만 base64 그대로 유지
+    const pdfResults = await Promise.all(pdfsIn.map(async (p)=>{
+      if(!p.data || !p.data.startsWith('data:')) return p;
+      const url = await uploadDataUrlToStorage(p.data, `notices/${m}/${ts}_${p.name||'file.pdf'}`);
+      tick();
+      return { data: url || p.data, name: p.name };
+    }));
+
+    // base64가 여전히 과도하면 저장 중단(RTDB 보호용 상한 — Storage 업로드 실패 시에도 최대한 저장되도록 상향 조정됨)
+    const oversizedImage = imageResults.find(img=> typeof img === 'string' && img.startsWith('data:') && img.length > 2000000);
+    if(oversizedImage){
+      throw new Error('이미지 중 용량이 너무 큰 것이 있습니다(원본 해상도 기준 약 1.5MB 초과). 일부 이미지를 빼거나 작은 영역만 캡처해 붙여넣어 주세요.');
     }
-    if(typeof pdfOut === 'string' && pdfOut.startsWith('data:') && pdfOut.length > 900000){
-      throw new Error('PDF 용량이 너무 큽니다. 파일을 줄이거나 Storage Rules를 설정해 주세요.');
+    const oversizedPdf = pdfResults.find(p=> typeof p.data === 'string' && p.data.startsWith('data:') && p.data.length > 5000000);
+    if(oversizedPdf){
+      throw new Error(`PDF "${oversizedPdf.name||''}" 용량이 너무 큽니다(약 3.5MB 초과). 무료 플랜에서는 RTDB에 직접 저장되므로, 파일을 압축하거나 더 작은 PDF로 첨부해 주세요.`);
     }
 
     const data = {
       title: title, content: content, direction: direction,
-      image: imageOut,
-      pdf: pdfOut,
-      pdfName: window.announcementPdfName || null
+      images: imageResults.filter(Boolean),
+      pdfs: pdfResults.filter(p=> p && p.data)
     };
+    // 기존에 있던 공지(있다면)는 지우지 않고 "지난 공지" 히스토리로 먼저 보관
+    if(announcementDataByMode[m] && announcementDataByMode[m].title){
+      await archiveCurrentNotice(m, announcementDataByMode[m]);
+    }
     await db.ref(noticePath(m)).set(data);
-    announcementDataByMode[m] = { title, mode:'custom', content, direction, image:data.image, pdf:data.pdf, pdfName:data.pdfName };
+    announcementDataByMode[m] = { title, mode:'custom', content, direction, images:data.images, pdfs:data.pdfs };
     // 배너 제목 즉시 반영 (모드 불일치·캐시 문제로 안 바뀌던 경우 방지)
     if(NOTICE_LABEL[m]){
       noticeModeCurrent = m;
@@ -1958,16 +2135,165 @@ async function saveAnnouncement(m){
   }
 }
 
-function switchToAutoAnnouncement(m){
+async function switchToAutoAnnouncement(m){
   if(!db) return;
   const old = announcementDataByMode[m];
-  db.ref(noticePath(m)).remove().then(()=>{
-    if(old){ deleteStorageUrlSafe(old.image); deleteStorageUrlSafe(old.pdf); }
+  try{
+    // 배너에서 내리기 전, "지난 공지"로 먼저 보관(첨부는 그대로 유지되어 이력에서 계속 열람 가능)
+    if(old && old.title){ await archiveCurrentNotice(m, old); }
+    await db.ref(noticePath(m)).remove();
     announcementDataByMode[m] = null;
     if(m === noticeModeCurrent) displayAnnouncement(m);
     closeAnnouncementMgmt();
-    alert('✅ ' + NOTICE_LABEL[m] + '공지가 삭제되었습니다.');
-  }).catch(err=> alert('삭제 실패: ' + err.message));
+    alert('✅ ' + NOTICE_LABEL[m] + '공지가 배너에서 내려갔습니다. (지난 공지 목록에 보관됨)');
+  }catch(err){ alert('삭제 실패: ' + err.message); }
+}
+
+// ===== 관리자: 지난 공지(히스토리) 관리 화면 =====
+function fmtNoticeDate(ts){
+  if(!ts) return '';
+  const d = new Date(ts);
+  return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+async function openNoticeHistoryAdmin(m){
+  const overlay = document.getElementById('announcementOverlay');
+  if(!overlay) return;
+  overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:16px;max-width:90vw;width:95%;max-height:88vh;margin:20px auto;box-shadow:0 20px 50px rgba(0,0,0,.2);display:flex;flex-direction:column;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-size:14px;font-weight:800;color:#2E2140;">🗂 ${NOTICE_LABEL[m]} 지난 공지 관리</div>
+      <button onclick="closeAnnouncementMgmt()" style="background:none;border:1px solid #E4E7EE;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;">✕</button>
+    </div>
+    <div id="noticeHistAdminList" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">불러오는 중...</div>
+    <button onclick="openAnnouncementMgmt('${m}')" style="margin-top:12px;padding:10px;background:#E4E7EE;color:#2E2140;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">↩️ 돌아가기</button>
+  </div>`;
+  const list = await loadNoticeHistory(m);
+  window._noticeHistCache = window._noticeHistCache || {};
+  window._noticeHistCache[m] = list;
+  renderNoticeHistoryAdminList(m);
+}
+
+function renderNoticeHistoryAdminList(m){
+  const el = document.getElementById('noticeHistAdminList');
+  if(!el) return;
+  const list = (window._noticeHistCache && window._noticeHistCache[m]) || [];
+  if(!list.length){ el.innerHTML = '<div style="font-size:12px;color:#B8BECC;text-align:center;padding:24px 0;">보관된 지난 공지가 없습니다.</div>'; return; }
+  el.innerHTML = list.map((item, idx)=> `
+    <div style="border:1px solid #E4E7EE;border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div style="min-width:0;">
+          <div style="font-size:12.5px;font-weight:700;color:#2E2140;word-break:break-word;">${escapeHtml(item.title||'(제목없음)')}</div>
+          <div style="font-size:10.5px;color:#8A93A8;margin-top:2px;">${fmtNoticeDate(item.savedAt)}${(item.images&&item.images.length)?` · 이미지 ${item.images.length}장`:''}${normalizeNoticePdfs(item).length?` · PDF ${normalizeNoticePdfs(item).length}개`:''}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          <button onclick="viewNoticeHistoryItemAdmin('${m}', ${idx})" style="padding:5px 9px;background:#EAF0FF;color:#4A6FE3;border:none;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;">보기</button>
+          <button onclick="deleteNoticeHistoryItem('${m}', ${idx})" style="padding:5px 9px;background:#FDEBEE;color:#C0392B;border:none;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;">삭제</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function viewNoticeHistoryItemAdmin(m, idx){
+  const list = (window._noticeHistCache && window._noticeHistCache[m]) || [];
+  const item = list[idx];
+  if(!item) return;
+  const overlay = document.getElementById('announcementOverlay');
+  if(!overlay) return;
+  let body = `<div style="font-weight:800;font-size:13px;color:#2E2140;">${escapeHtml(item.title||'')}</div>`;
+  if(item.content) body += `<div style="font-size:12px;color:#4A4F5C;white-space:pre-wrap;line-height:1.5;margin-top:8px;">${escapeHtml(item.content)}</div>`;
+  body += buildNoticeGalleryHtml(item.images||[], '지난공지이미지');
+  normalizeNoticePdfs(item).forEach(p=>{
+    body += `<div style="margin-top:8px;"><a href="${p.data}" target="_blank" style="padding:7px 12px;background:#4A6FE3;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;display:inline-block;">📎 ${escapeHtml(p.name||'첨부파일')} 보기</a></div>`;
+  });
+  overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:16px;max-width:90vw;width:95%;max-height:88vh;margin:20px auto;box-shadow:0 20px 50px rgba(0,0,0,.2);display:flex;flex-direction:column;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:800;color:#2E2140;">🗂 ${fmtNoticeDate(item.savedAt)}</div>
+      <button onclick="closeAnnouncementMgmt()" style="background:none;border:1px solid #E4E7EE;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;">✕</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;">${body}</div>
+    <button onclick="openNoticeHistoryAdmin('${m}')" style="margin-top:12px;padding:10px;background:#E4E7EE;color:#2E2140;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">↩️ 목록으로</button>
+  </div>`;
+}
+
+async function deleteNoticeHistoryItem(m, idx){
+  if(!confirm('이 지난 공지를 삭제할까요? 되돌릴 수 없습니다.')) return;
+  const list = (window._noticeHistCache && window._noticeHistCache[m]) || [];
+  const item = list[idx];
+  if(!item) return;
+  try{
+    (item.images||[]).forEach(deleteStorageUrlSafe);
+    normalizeNoticePdfs(item).forEach(p=> deleteStorageUrlSafe(p.data));
+    list.splice(idx, 1);
+    await db.ref(noticeHistoryPath(m)).set(list);
+    window._noticeHistCache[m] = list;
+    renderNoticeHistoryAdminList(m);
+  }catch(e){ alert('삭제 실패: ' + e.message); }
+}
+
+// ===== 학습자: 이전 공지 보기 (현재 탭/화면 그대로 둔 채 별도 오버레이로만 열람) =====
+function ensureNoticeHistoryViewerOverlay(){
+  let el = document.getElementById('noticeHistViewOverlay');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'noticeHistViewOverlay';
+    el.style.position = 'fixed'; el.style.inset = '0';
+    el.style.background = 'rgba(20,22,34,.6)'; el.style.backdropFilter = 'blur(4px)';
+    el.style.zIndex = '250'; el.style.overflowY = 'auto'; el.style.display = 'none';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+async function openNoticeHistoryViewer(m){
+  const overlay = ensureNoticeHistoryViewerOverlay();
+  overlay.style.display = 'flex';
+  overlay.style.alignItems = 'flex-start';
+  overlay.style.justifyContent = 'center';
+  overlay.style.paddingTop = '40px';
+  overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:16px;max-width:90vw;width:95%;max-height:88vh;margin:0 auto;box-shadow:0 20px 50px rgba(0,0,0,.2);display:flex;flex-direction:column;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-size:14px;font-weight:800;color:#2E2140;">📜 ${NOTICE_LABEL[m]} 이전 공지</div>
+      <button onclick="closeNoticeHistoryViewer()" style="background:none;border:1px solid #E4E7EE;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;">✕</button>
+    </div>
+    <div id="noticeHistViewList" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">불러오는 중...</div>
+  </div>`;
+  const list = await loadNoticeHistory(m);
+  window._noticeHistViewCache = window._noticeHistViewCache || {};
+  window._noticeHistViewCache[m] = list;
+  const listEl = document.getElementById('noticeHistViewList');
+  if(!listEl) return; // 그 사이 닫혔으면 무시
+  if(!list.length){ listEl.innerHTML = '<div style="font-size:12px;color:#B8BECC;text-align:center;padding:24px 0;">이전 공지가 없습니다.</div>'; return; }
+  listEl.innerHTML = list.map((item, idx)=> `
+    <div onclick="viewNoticeHistoryItem('${m}', ${idx})" style="border:1px solid #E4E7EE;border-radius:8px;padding:10px;cursor:pointer;">
+      <div style="font-size:12.5px;font-weight:700;color:#2E2140;word-break:break-word;">${escapeHtml(item.title||'(제목없음)')}</div>
+      <div style="font-size:10.5px;color:#8A93A8;margin-top:2px;">${fmtNoticeDate(item.savedAt)}</div>
+    </div>`).join('');
+}
+
+function viewNoticeHistoryItem(m, idx){
+  const list = (window._noticeHistViewCache && window._noticeHistViewCache[m]) || [];
+  const item = list[idx];
+  const overlay = document.getElementById('noticeHistViewOverlay');
+  if(!item || !overlay) return;
+  let body = `<div style="font-weight:800;font-size:13px;color:#2E2140;">${escapeHtml(item.title||'')}</div>`;
+  if(item.content) body += `<div style="font-size:12px;color:#4A4F5C;white-space:pre-wrap;line-height:1.5;margin-top:8px;">${escapeHtml(item.content)}</div>`;
+  body += buildNoticeGalleryHtml(item.images||[], '지난공지이미지');
+  normalizeNoticePdfs(item).forEach(p=>{
+    body += `<div style="margin-top:8px;"><a href="${p.data}" target="_blank" style="padding:7px 12px;background:#4A6FE3;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;display:inline-block;">📎 ${escapeHtml(p.name||'첨부파일')} 보기</a></div>`;
+  });
+  overlay.innerHTML = `<div style="background:#fff;border-radius:12px;padding:16px;max-width:90vw;width:95%;max-height:88vh;margin:0 auto;box-shadow:0 20px 50px rgba(0,0,0,.2);display:flex;flex-direction:column;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:800;color:#2E2140;">📜 ${fmtNoticeDate(item.savedAt)}</div>
+      <button onclick="closeNoticeHistoryViewer()" style="background:none;border:1px solid #E4E7EE;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;">✕</button>
+    </div>
+    <div style="overflow-y:auto;flex:1;">${body}</div>
+    <button onclick="openNoticeHistoryViewer('${m}')" style="margin-top:12px;padding:10px;background:#E4E7EE;color:#2E2140;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">↩️ 목록으로</button>
+  </div>`;
+}
+
+function closeNoticeHistoryViewer(){
+  const overlay = document.getElementById('noticeHistViewOverlay');
+  if(overlay) overlay.style.display = 'none';
 }
 
 document.getElementById('dateBtn').addEventListener('click',()=>{
@@ -2039,6 +2365,7 @@ document.getElementById('pinSaveBtn').addEventListener('click', async ()=>{
   if(!db) return pinErr('연결 오류, 잠시 후 다시 시도해주세요');
   await db.ref('pins/'+name).set(await hashPin(nw));
   closePinSetting();
+  checkPinNudge(document.getElementById('loginSelect').value);
 });
 document.getElementById('pinRemoveBtn').addEventListener('click', async ()=>{
   const name = document.getElementById('pinSettingName').textContent;
@@ -2051,6 +2378,7 @@ document.getElementById('pinRemoveBtn').addEventListener('click', async ()=>{
   if(!db) return pinErr('연결 오류, 잠시 후 다시 시도해주세요');
   await db.ref('pins/'+name).remove();
   closePinSetting();
+  checkPinNudge(document.getElementById('loginSelect').value);
 });
 
 // ===== 어드민: 전체 회원/진도 관리 =====
@@ -2955,7 +3283,8 @@ async function loadFirebaseQuestions(){
     try{ updateList(dataCache[mode]); }catch(e){}
   }
 }
-questionsLoadPromise = loadFirebaseQuestions();
+// 참고: loadFirebaseQuestions()는 startAppAfterAuth()에서 Firebase 인증 완료 후 1회만 호출됨
+// (예전엔 여기서도 한 번 더 호출했는데, 그 시점엔 db가 아직 준비되지 않아 항상 빈 호출로 끝나던 중복 코드였음 — 제거)
 
 // ===== 경량화(집중) 모드 =====
 const LITE_KEY = 'liteMode';
@@ -3726,6 +4055,8 @@ const DEFAULT_HISTORY = [
   { v:'v51', date:'2026-08-02', text:'[안정성] 명언바 설정을 Firebase에서 불러올 때 값 검증 추가 — animation/speed/topics에 잘못된 값이 들어와도 기본값으로 자동 대체, 조용히 무시되던 로드 실패를 콘솔에 기록하도록 개선(기능 변화 없음, 방어 로직만 추가)' },
   { v:'v51', date:'2026-08-02', text:'[외부검토 반영] 다른 AI(Claude 리뷰) 코드 리뷰 재검토 — Security Rules 강화(→v46 완료), PIN 해시(→v45 완료), 모듈 분리(→v47 완료)는 이미 반영된 항목으로 확인. 다크모드/캐시 세분화는 6인 규모 스터디에 불필요 판단으로 보류(계획에도 미등록). 로딩 스피너·에러 메시지 순화는 저우선 개선사항으로 계획에 등록' },
   { v:'v52', date:'2026-08-02', text:'[버그수정·중요] 오답 재풀이 시 원본 점수기록이 통째로 덮어써지던 문제 수정 — submitBeobQuiz()가 beobRetry 플래그를 무시하고 항상 .set()으로 덮어써서, 예를 들어 최초 20/25(80점)로 완료 후 오답 5개 재풀이해서 3개 맞히면 기록이 3/5(60점)로 뒤바뀌고 응시일(date)까지 재풀이 날짜로 바뀌던 버그. 이제 재풀이 시엔 원본 total/date는 유지하고 correct/score/wrongNums만 갱신(lastRetryDate 필드 별도 기록), history 로그도 mode:retry로 정확히 구분 기록됨. 관리자 과정관리 화면의 팀 현황판 점수 왜곡도 함께 해결됨. (외부검토 - 소넷5 최대사고 - 에서 코드레벨로 지적받아 확인 후 수정)' },
+  { v:'v53', date:'2026-08-02', text:'[공지 저장 속도·오류] 공지 저장 시 이미지·PDF를 순차(최대 24초 대기)로 Storage에 업로드하던 것을 동시(병렬, 최대 12초)로 바꿔 저장 속도 개선. 근본 원인은 Firebase Storage Rules가 아직 발행되지 않아 업로드가 매번 타임아웃 후 base64 방식으로 폴백되고, RTDB 용량 보호를 위한 900KB 상한에 걸려 "PDF 용량이 너무 큽니다" 오류가 뜨던 것 — Storage Rules를 콘솔에서 발행하면 타임아웃·용량상한 문제 모두 해소됨(안내 별도 전달). 다중 이미지 첨부·공지 히스토리(지난 공지 목록+선택삭제)는 아직 미착수 상태로 계획에 유지' },
+  { v:'v54', date:'2026-08-02', text:'[신규기능] 공지 이미지 다중 첨부 구현(최대 10장) — window.announcementImage(단일)를 announcementImages(배열)로 전환, Ctrl+V 붙여넣기를 여러 번 반복하면 계속 추가됨(문서 전체에서 붙여넣기 감지하도록 리스너 확장), "여러 장 선택" 파일 input(multiple)도 신설. 미리보기에 썸네일 그리드+장별 삭제(✕) 버튼 추가. 저장 시 이미지 전부를 Storage에 병렬 업로드, 실패분만 개별 base64 폴백. 예전 단일 image 필드로 저장된 공지도 배열로 자동 변환해 정상 표시(호환 유지). [속도 개선] Storage 업로드가 한 번 실패하면(Rules 미발행 등) 이번 접속(세션) 동안은 재시도로 8초씩 낭비하지 않고 즉시 base64로 넘어가도록 캐싱(storageProbeState). [용량 상한 상향] RTDB 폴백시 하드 상한을 이미지 900KB→1.5MB, PDF 900KB→3.5MB로 완화해 Storage 미설정 상태에서도 웬만한 파일은 저장되게 함(다만 근본 해결은 Storage Rules 발행). 저장 버튼에 "업로드 중(n/총)" 진행 표시 추가' },
   { v:'v52', date:'2026-08-02', text:'[UX개선] 문풀 화면 게이지 옆에 일시정지(⏸) 버튼 추가 — 기존에도 ✕ 버튼과 이어풀기 확인창(909줄)이 있었지만 눈에 덜 띄어서, 게이지 바로 옆에 명확한 버튼으로 노출. 클릭 시 기존 로직 그대로(답안 저장 후 나가기 확인 → 다음에 재입장 시 이어서/처음부터 선택 가능)' },
 ];
 async function loadHistoryLog(){
@@ -3776,6 +4107,9 @@ const DEFAULT_PLAN = [
   { text: '[버그, 경미] 텍스트파서(parseQuizTextLocal)가 "①②③④" 원형숫자는 되는데 "1)2)3)4)" 숫자형 선택지는 옵션줄을 새 문제 시작으로 오인해 파싱 실패함 — 원형숫자 사용 중이라 급하지 않지만, 나중에 다른 형식 텍스트 붙여넣을 일 있으면 먼저 고칠 것' },
   { text: '[정리, 경미] closeAdminAssignPreview 등 v45 정리 때 같이 지웠어야 할 도달불가 죽은 코드 잔여분 있음 (adminNotesList/newNoteInput 참조하는 구버전 노트 함수들) — 크래시 없음, 다음 대청소 때 같이 정리' },
   { text: '[UX, 경미] 페이지네이션 이전/다음 버튼이 항상 활성 상태(마지막 페이지 넘어가면 빈 표) — updateList()에서 totalPages 계산해놓고 버튼 disabled에 반영을 안 함' },
+  { text: '[미착수, 재시작 필요] 공지 히스토리(과목당 1개만 유지·덮어쓰기 되던 것을 여러 개 쌓기) — 최신은 배너, 지난 공지는 목록에서 열람' },
+  { text: '[미착수, 재시작 필요] 공지관리 화면에 지난 공지 선택삭제 UI 추가 (Storage 무료용량 관리 목적)' },
+  { text: '[재확인 필요] Firebase Storage Rules 발행 여부 — 발행 전에는 이미지 1.5MB·PDF 3.5MB 초과 시 저장이 막힘. 사용자가 콘솔에서 Rules를 발행했는지 확인 필요' },
 ];
 async function loadAdminNotes2(){
   let notes = await getAdminNotes();
