@@ -1,20 +1,107 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#16041f">
-<title>사다리고고</title>
-<meta property="og:title" content="🪜 사다리고고">
-<meta property="og:description" content="사다리 타고 건물·요일 받기">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Gowun+Dodum&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="./sadari.css?v=4">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#16041f" />
+  <title>사다리고고</title>
+  <meta property="og:title" content="🪜 사다리고고" />
+  <meta property="og:description" content="송현 서니 인원 소아 강수 승진 — 사다리 타고 건물·요일 받기" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Gowun+Dodum&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./sadari.css?v=5" />
 </head>
 <body>
-<div id="app"></div>
-<div id="toast" class="toast"></div>
-<script src="./sadari.js?v=4"></script>
+  <canvas class="confetti hidden" id="confetti"></canvas>
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">
+        <div class="logo">사다리고고</div>
+        <div class="tag" id="subtitle">건물 한 번, 요일 한 번</div>
+      </div>
+      <div class="row-btns">
+        <button class="icon-btn" id="btnSound">🔊</button>
+        <button class="icon-btn" id="btnAdmin">🔐</button>
+      </div>
+    </header>
+    <div id="netBanner" class="banner hidden"></div>
+    <section class="card" id="progressCard">
+      <div class="progress-wrap">
+        <svg class="ring" viewBox="0 0 72 72" id="ringSvg"></svg>
+        <div class="prog-copy"><b id="progNum">0 / 0</b><p id="progText">준비 중</p></div>
+      </div>
+    </section>
+    <section class="card" id="lobby">
+      <h2 class="sec">누가 안 탐어요</h2>
+      <div class="chips" id="waitChips"></div>
+      <h2 class="sec" style="margin-top:16px">이미 탄 사람</h2>
+      <div id="doneList"></div>
+      <h2 class="sec" style="margin-top:16px">나는 누구?</h2>
+      <div class="who-grid" id="whoGrid"></div>
+      <div style="height:10px"></div>
+      <button class="kakao-btn" id="btnShare">💛 카톡에 초대하기</button>
+    </section>
+    <section class="card hidden" id="play">
+      <h2 class="sec" id="playKicker">1차 · 건물 사다리</h2>
+      <div class="ticket-name" id="playWho">송현</div>
+      <div class="ladder-box"><svg class="ladder" id="ladderSvg" viewBox="0 0 520 420"></svg></div>
+      <p class="hint" id="playHint"></p>
+      <button class="big-btn" id="btnRide">사다리 타기!</button>
+      <div style="height:8px"></div>
+      <button class="ghost-btn" id="btnBackLobby">로비로</button>
+    </section>
+    <section class="card result-ticket hidden" id="result">
+      <div class="ticket-kicker">TODAY'S TICKET</div>
+      <div class="ticket-name" id="resName">송현</div>
+      <div class="pair"><span>건물</span><b id="resBld">?</b></div>
+      <div class="pair"><span>요일</span><b id="resDay">?</b></div>
+      <p class="hint" id="resWhen"></p>
+      <button class="big-btn pink" id="btnReplay">다시 타보는 척</button>
+      <div style="height:8px"></div>
+      <button class="ghost-btn" id="btnToLobby">로비로</button>
+    </section>
+    <section class="card hidden" id="waitingSetup">
+      <h2 class="sec">아직 준비가 덜 됐어요</h2>
+      <p>송현이가 건물 이름을 넣어야 탈 수 있어요.</p>
+    </section>
+    <footer class="fine">같은 링크 · 같은 사다리</footer>
+  </div>
+  <div class="modal" id="adminModal">
+    <div class="sheet">
+      <h2 class="sec" style="font-size:18px">관리자 · 송현만</h2>
+      <div id="adminLock">
+        <label class="fld">비밀번호</label>
+        <input type="password" id="pinInput" placeholder="0326" inputmode="numeric" />
+        <div style="height:12px"></div>
+        <button class="big-btn" id="btnPin">들어가기</button>
+        <div style="height:8px"></div>
+        <button class="ghost-btn" id="btnCloseAdmin1">닫기</button>
+      </div>
+      <div id="adminBody" class="hidden">
+        <label class="fld">방 제목</label>
+        <input type="text" id="fldTitle" />
+        <label class="fld">사람 이름 (쉼표)</label>
+        <textarea id="fldPlayers"></textarea>
+        <label class="fld">요일 (쉼표)</label>
+        <textarea id="fldDays"></textarea>
+        <label class="fld">건물 이름 (쉼표)</label>
+        <textarea id="fldBuildings"></textarea>
+        <label class="fld">비밀번호 바꾸기</label>
+        <input type="text" id="fldPin" />
+        <div id="peekBox" class="hint"></div>
+        <div style="height:12px"></div>
+        <button class="big-btn" id="btnSave">저장하고 사다리 만들기</button>
+        <div style="height:8px"></div>
+        <button class="ghost-btn" id="btnReset">결과만 초기화</button>
+        <div style="height:8px"></div>
+        <button class="ghost-btn" id="btnRegen">사다리 다시 섞기</button>
+        <div style="height:8px"></div>
+        <button class="ghost-btn" id="btnCloseAdmin2">닫기</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="./sadari.js?v=5"></script>
 </body>
 </html>
